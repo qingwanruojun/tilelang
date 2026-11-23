@@ -1,0 +1,9 @@
+{
+  "TileLangAicpuTransfer": {
+    "opInfo": {
+      "opKernelLib": "AICPUKernel",
+      "kernelSo": "libtilelang_aicpu_kernel.so",
+      "functionName": "TileLangAicpuTransfer"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+<hcomm_check_cfg>
+    <item input="aicpu_tilelang_transfer.tar.gz" output="aicpu_tilelang_transfer.tar.gz" type="cms" sign_alg="PSS" tag="ascend_aicpu" nvcnt="0"/>
+</hcomm_check_cfg>

@@ -77,6 +77,7 @@ class Team:
         self._api = self._step(_native)
         self._collectives = {}
         self._programs = {}
+        self._aicpu_binary = None
         self._comm = self._new_comm(0)
 
     def _new_comm(self, expansion):
@@ -213,6 +214,12 @@ class Team:
                 if self.windows[-1]._handle:
                     self._call("HcclCommSymWinDeregister", self.windows[-1]._handle)
                 self.windows.pop()
+        if self._aicpu_binary is not None:
+            from .aicpu import _check
+
+            api, binary = self._aicpu_binary
+            self._step(lambda: _check(api.tl_aicpu_unload, binary))
+            self._aicpu_binary = None
         for engine in list(self._collectives):
             self._call("HcclCommDestroy", self._collectives[engine])
             del self._collectives[engine]
