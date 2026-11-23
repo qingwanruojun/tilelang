@@ -70,6 +70,7 @@ from .frame import Cube, CubeFrame, SimdVF, SimdVFFrame, SimtVF, SimtVFFrame, Ve
 from . import aicpu as aicpu
 from . import ccu as ccu
 from . import comm as comm
+from . import jetty as jetty
 from . import simd as simd  # noqa: F401 (exposed as T.simd.*)
 from . import vmi as vmi  # noqa: F401 (exposed as T.vmi.*)
 
@@ -135,6 +136,7 @@ _ASCEND_API_ALL = (
     "aicpu",
     "ccu",
     "comm",
+    "jetty",
     "simd",
     "vmi",
     "unroll",

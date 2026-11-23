@@ -88,7 +88,37 @@ all_gather_into(dst, src, team=team, engine="ccu", program=program)
 
 Build the native program for the installed CANN release and target. Its C-linkage host entry has ABI `HcclResult(const void *src, void *dst, uint64_t count, HcclDataType dtype, HcclComm comm, aclrtStream stream)`. Count is per rank, in elements. The entry must enqueue its work on the supplied stream and return the launch status. Device code and deployment dependencies are the algorithm author's responsibility. An AICPU program can schedule thread/channel notifications and data movement. A CCU program can register and launch microcode using events. The wrapper retains the loaded entry and a dedicated communicator per engine, library digest and symbol for the team lifetime. All members must supply the same binary and symbol. Local file paths may differ. With `program=None`, the built-in HCCL path remains available.
 
-The CANN HCCL examples under `examples/05_custom_ops_allgather/{ccu,aicpu}` expose this ABI. To exercise a compatible native build, pass `--library /path/to/lib.so --symbol HcclAllGatherCustom` to the collective example. Native program calls and device-side communication are separate submission paths. The AIV and CCU frontends use different execution domains. SIMT cooperative posting, Jetty queue manipulation and automatic communication scheduling are outside its current API.
+The CANN HCCL examples under `examples/05_custom_ops_allgather/{ccu,aicpu}` expose this ABI. To exercise a compatible native build, pass `--library /path/to/lib.so --symbol HcclAllGatherCustom` to the collective example. Native program calls and device-side communication are separate submission paths. The AIV and CCU frontends use different execution domains. The SIMT Jetty API below exposes cooperative queue posting. The application controls the communication schedule.
+
+## SIMT Jetty writes in a communication or fused kernel
+
+Create a team with `transport="channel"` and register a GM window. Within an
+explicit `T.Vector(vector=1)` scope, allocate `q = T.jetty.workspace()`. One
+converged `T.SimtVF(threads=32)` owns the channel and calls:
+
+1. `T.jetty.init(ctx, peer, q)` to bind the workspace to a group-local peer.
+2. `T.jetty.post_write(ctx, q, src=..., dst=..., segments=N)` to append a
+   gathered write. The first N lanes each supply a contiguous, equal-length
+   source slice. All 32 lanes call the operation with the same destination.
+   N ranges from 1 to 12. The destination length is N times the source length.
+3. `T.jetty.publish(ctx, q)` to advance the send queue and ring the doorbell
+   for the pending writes. Multiple posts can share one publication.
+4. `T.jetty.drain(ctx, q)` to wait for completion. Independent local work
+   may run between publish and drain. Coordinate remote consumption and window
+   reuse explicitly.
+
+All lanes must follow the same queue operations, including loop trip counts.
+Hold exclusive ownership through the final drain. Use a destination inside the
+window covered by the peer descriptor. The example registers one window and
+uses disjoint source and destination slices. The queue must have space for all
+requests in each unpublished batch. Team synchronization reports device errors.
+
+`examples/ascend/jetty_exchange.py` contains both a pure communication kernel
+and a fused write and local scale. It tests noncontiguous source segments,
+unchanged destination guards and repeated launches against CPU references.
+It targets Ascend 950, plain AscendC and CANN 9.3.0+ with SIMT Jetty headers.
+Run with `torchrun --standalone --nproc-per-node=2 examples/ascend/jetty_exchange.py`.
+Use `--lower-only` to inspect generated source.
 
 ## Run
 

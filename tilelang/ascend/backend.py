@@ -21,8 +21,14 @@ def tilelang_callback_ascend_compile(code, target, pass_config=None):
     extra_flags = bisheng.normalize_options(cfg.get(PassConfigKey.TL_DEVICE_COMPILE_FLAGS))
     options = ["-I" + TILELANG_TEMPLATE_PATH, *extra_flags]
 
-    if "tl_ain::" in code:
+    jetty = "tl_jetty::" in code
+    if jetty or "tl_ain::" in code:
         sdk = Path(os.environ["ASCEND_HOME_PATH"])
+        if jetty:
+            headers = sdk / "asc/include/comm_api/aicore/jetty"
+            if not any((headers / name).is_file() for name in ("asccomm_jetty_simt.h", "hcomm_jetty_simt.h")):
+                raise RuntimeError("T.jetty requires CANN 9.3.0+ with the asc-comm SIMT Jetty headers for Ascend 950")
+            options.append("-DUSE_SIMT")
         # Bisheng's device frontend cannot instantiate libstdc++'s constrained std::pair assignment.
         options.append("-U__cpp_concepts")
         for path in (

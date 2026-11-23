@@ -183,6 +183,8 @@ class Team:
         attrs = getattr(getattr(kernel, "prim_func", None), "attrs", None)
         if self.transport != "ain" and attrs and attrs.get("tl.ascend_ain_sync", 0):
             raise ValueError("AIN signal and team_sync operations require transport='ain'")
+        if self.transport != "channel" and attrs and attrs.get("tl.ascend_jetty", 0):
+            raise ValueError("T.jetty requires Team.from_group(transport='channel')")
         self.prepare()
         return kernel(self._ctx, *(a.local if isinstance(a, Window) else a for a in args))
 
