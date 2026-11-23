@@ -51,7 +51,12 @@ def AscendPassPipelineBody(mod: IRModule, target: Target) -> IRModule:
         launch_dim_tags=["cthread"],
     )(mod)
     pass_ctx = tilelang.transform.get_pass_context()
-    auto_schedule_enabled = allow_autoschedule(pass_ctx=pass_ctx)
+    has_ain = any(getattr(func, "attrs", None) and func.attrs.get("tl.ascend_ain", 0) for func in mod.functions.values())
+    if has_ain and target_is_pto(target):
+        raise ValueError("T.comm AIV window operations require plain AscendC code generation")
+    # A peer DMA outlives the submitting call. Keep the author's task order
+    # until the auto-scheduler models channel completion and remote regions.
+    auto_schedule_enabled = allow_autoschedule(pass_ctx=pass_ctx) and not has_ain
     disable_reuse = should_disable_shared_memory_reuse(pass_ctx=pass_ctx)
 
     if should_force_let_inline(pass_ctx=pass_ctx):

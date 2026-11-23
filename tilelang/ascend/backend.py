@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from tilelang.ascend.target import target_is_plain_ascend, target_is_pto
 from tilelang.backend.host_codegen import STANDARD_HOST_CODEGENS
 from tilelang.backend.module import BackendModule, register_backend
@@ -17,6 +20,21 @@ def tilelang_callback_ascend_compile(code, target, pass_config=None):
     cfg = pass_config or {}
     extra_flags = bisheng.normalize_options(cfg.get(PassConfigKey.TL_DEVICE_COMPILE_FLAGS))
     options = ["-I" + TILELANG_TEMPLATE_PATH, *extra_flags]
+
+    if "tl_ain::" in code:
+        sdk = Path(os.environ["ASCEND_HOME_PATH"])
+        # Bisheng's device frontend cannot instantiate libstdc++'s constrained std::pair assignment.
+        options.append("-U__cpp_concepts")
+        for path in (
+            "asc/include",
+            "asc/include/basic_api",
+            "asc/include/adv_api",
+            "asc/include/comm_api/aicore",
+            "include",
+            "include/hcomm",
+            "pkg_inc",
+        ):
+            options.append(f"-I{sdk / path}")
 
     target_arch = bisheng.get_target_npu_arch(target)
 

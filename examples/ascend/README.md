@@ -13,6 +13,9 @@ Inputs, reference computations and correctness checks run on the NPU.
 | [RMSNorm](example_rmsnorm.py) | SIMT fragments, reduction and pipelined row processing |
 | [FP8 quantization](example_per_token_cast_to_fp8.py) | The same group-wise quantization in SIMT and explicit SIMD |
 
+For cross-rank window access, fused AllGather + Matmul and whole-operation
+AllGather, see [Ascend communication](ain_communication.md).
+
 For advanced GEMM implementations and tuning, see [deepgemm](deepgemm).
 Attention kernels are in [flash_attention](flash_attention/README.md).
 

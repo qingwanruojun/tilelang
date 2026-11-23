@@ -250,6 +250,7 @@ class Builder(BaseBuilder):
         self.constexpr_var = set()
         self.eager_jit: EagerJITStage = "none"
         self.eager_jit_subs: dict[str, PrimExpr] = {}
+        self.inferred_func_attrs: dict[str, Any] = {}
         self.func_pass_configs: dict[str, Any] | None = None
         self.func_compile_flags: list[str] | str | None = None
         self.host_mapped_buffers: list[Buffer] = []
@@ -1266,6 +1267,8 @@ def annotate_pass_configs(configs: dict[str, Any]) -> None:
 
 def _patch_prim_func_attrs(pf: PrimFunc, builder: Builder) -> PrimFunc:
     """Attach function-level out_idx, pass_configs and compile_flags as PrimFunc attrs."""
+    for key, value in builder.inferred_func_attrs.items():
+        pf = pf.with_attr(key, value)
     if builder.host_mapped_buffers:
         from tilelang.engine.host_mapped import HOST_MAPPED_PARAMS_ATTR, get_host_mapped_params
 
