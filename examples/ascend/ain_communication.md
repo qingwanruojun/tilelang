@@ -53,7 +53,31 @@ all_gather_into(dst, src, team=team, engine="ccu")
 
 Pass contiguous tensors on the team device. The output stores all inputs flattened in group rank order. Supported dtypes are FP16, BF16, FP32 and INT32. An engine policy selects HCCL AICPU_TS or CCU_SCHED on a separate cached communicator. HCCL selects the concrete algorithm. Each call collectively validates the arguments before enqueueing the operation on the team stream.
 
-### Launch an author-provided algorithm
+### Author a CCU communication kernel in TileLang
+
+Use the Ascend language module and submit the decorated function on a Team. The function body builds a rank-specialized CCU program; the CPU does not execute the tensor copies. Each rank runs the same Python definition.
+
+```python
+import tilelang.ascend.language as T
+
+@T.ccu.kernel
+def all_gather(C, src, dst):
+    n = src.size
+    for peer in range(C.size):
+        C.copy(src[:], dst[C.rank * n : (C.rank + 1) * n], peer=peer)
+    C.wait_all()
+    C.barrier()
+
+all_gather(src_tensor, dst_tensor, team=team)
+```
+
+Input and output are distinct contiguous tensors of the same dtype. Slices use flattened element offsets. `C.rank` and `C.size` describe the group; Python loops and conditionals specialize on these and on tensor sizes. A self copy writes local GM; another peer writes its output buffer. `wait_all()` drains this rank's copies. All ranks execute matching barriers, including the final rendezvous that makes incoming writes safe for subsequent work on the Team stream. Copies to overlapping destination ranges in one phase are rejected. The first implementation supports one input and one output, contiguous copies of up to 256 MiB each, up to 16 outstanding copies between waits, and direct mesh channels. Its primitives expose transfer and synchronization; arithmetic reductions and device-data-dependent branches require additional lowering support.
+
+TileLang traces each rank's schedule and checks region bounds, matching barriers and write conflicts. On first use it binds channels, exchanges output addresses and memory tokens, emits local copies, remote writes, completion events and notify/wait, and registers a CCU microprogram. The Team reuses one CCU communicator, stream thread and peer channels. It caches the registered microprogram handle by schedule digest. Each call supplies current buffer addresses and tokens on its stream. CANN 9.2.0 provides the Hcomm CCU builder used by this backend. Users provide Python and tensor arguments.
+
+Run `torchrun --standalone --nproc-per-node=2 examples/ascend/ccu_collectives.py` for both mesh AllGather and ring rotation with nonzero offsets and untouched guard elements.
+
+### Interoperate with an existing native algorithm
 
 ```python
 from tilelang.ascend.distributed import NativeAllGather, all_gather_into
@@ -64,7 +88,7 @@ all_gather_into(dst, src, team=team, engine="ccu", program=program)
 
 Build the native program for the installed CANN release and target. Its C-linkage host entry has ABI `HcclResult(const void *src, void *dst, uint64_t count, HcclDataType dtype, HcclComm comm, aclrtStream stream)`. Count is per rank, in elements. The entry must enqueue its work on the supplied stream and return the launch status. Device code and deployment dependencies are the algorithm author's responsibility. An AICPU program can schedule thread/channel notifications and data movement. A CCU program can register and launch microcode using events. The wrapper retains the loaded entry and a dedicated communicator per engine, library digest and symbol for the team lifetime. All members must supply the same binary and symbol. Local file paths may differ. With `program=None`, the built-in HCCL path remains available.
 
-The CANN HCCL examples under `examples/05_custom_ops_allgather/{ccu,aicpu}` expose this ABI. To exercise a compatible native build, pass `--library /path/to/lib.so --symbol HcclAllGatherCustom` to the collective example. Native program calls and device-side communication are separate submission paths. The current TileLang frontend exposes AIV vector-scope communication. SIMT cooperative posting, Jetty queue manipulation and automatic communication scheduling are outside its current API.
+The CANN HCCL examples under `examples/05_custom_ops_allgather/{ccu,aicpu}` expose this ABI. To exercise a compatible native build, pass `--library /path/to/lib.so --symbol HcclAllGatherCustom` to the collective example. Native program calls and device-side communication are separate submission paths. The AIV and CCU frontends use different execution domains. SIMT cooperative posting, Jetty queue manipulation and automatic communication scheduling are outside its current API.
 
 ## Run
 
@@ -81,6 +105,8 @@ The two window examples accept `--channel` to select Hcomm explicitly, or `--com
 
 ## Ascend 950 validation
 
-On `ascend-npu-950-shell` with CANN 9.2.0, both ranks matched the reference in two consecutive launches of the HCCL example's custom CCU AllGather on a non-default stream. The built-in AICPU, built-in CCU and custom CCU paths also ran on one team. A missing library on one rank propagated an error to both ranks before native submission.
+On physical devices 1 and 3 of `ascend-npu-950-shell` with CANN 9.2.0, the Python kernels in `ccu_collectives.py` each passed two rounds on a non-default stream. AllGather outputs matched the rank-ordered reference; rotation also preserved the guard elements.
+
+In the earlier native-ABI test, both ranks matched the reference in two consecutive launches of the HCCL example's custom CCU AllGather on a non-default stream. The built-in AICPU, built-in CCU and custom CCU paths also ran on one team. A missing library on one rank propagated an error to both ranks before native submission.
 
 Bisheng compiled the two-tile signal exchange. Its two-rank run stopped at `HcclCommSymWinRegister` with status 15 on both ranks. The explicit-channel exchange previously reached stream synchronization and timed out. End-to-end AIV data correctness and communication/computation overlap still require verification on a working fabric. The custom AICPU host library and device kernel built and launched, but stream synchronization reported 507018 in both TileLang and the standalone native example. The built-in AICPU numerical check passed separately.

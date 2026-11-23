@@ -67,6 +67,7 @@ from .tile_schedule import (  # noqa: F401
 )
 from .frame import Cube, CubeFrame, SimdVF, SimdVFFrame, SimtVF, SimtVFFrame, Vector, VectorFrame  # noqa: F401
 
+from . import ccu as ccu
 from . import comm as comm
 from . import simd as simd  # noqa: F401 (exposed as T.simd.*)
 from . import vmi as vmi  # noqa: F401 (exposed as T.vmi.*)
@@ -130,6 +131,7 @@ _ASCEND_API_ALL = (
     "rng_rand",
     "rng_rand_float",
     "rsqrt",
+    "ccu",
     "comm",
     "simd",
     "vmi",
